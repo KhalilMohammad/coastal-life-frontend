@@ -1,7 +1,10 @@
-import React, { useState, useEffect } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
+import Table from "./Table";
 import "./index.css";
+
+const perPage = 20;
 
 const FileUpload = () => {
   const [file, setFile] = useState(null);
@@ -19,9 +22,11 @@ const FileUpload = () => {
   const [dateSelectionMode, setDateSelectionMode] = useState("single");
   const [selectedFirstEntryDate, setFirstSelectedEntryDate] = useState(null);
   const [selectedSecondEntryDate, setSecondSelectedEntryDate] = useState(null);
-  const [tableData, setTableData] = useState([]);
+  const [totalRows, setTotalRows] = useState(0);
+  const [jobId, setJobId] = useState();
+  const [progress, setProgress] = useState({});
+  const [loading, setLoading] = useState(false);
 
-  const perPage = 20;
   const handleDateSelectionModeChange = (mode) => {
     setDateSelectionMode(mode);
   };
@@ -93,13 +98,12 @@ const FileUpload = () => {
 
         const responseData = await result.json();
         if (responseData.success) {
-          setTableData(responseData.message);
-          setData(responseData.message);
+          setTotalRows(responseData.totalRows);
           setStatus("success");
           setCity("");
           setState("");
+          setJobId(responseData.jobId);
         } else {
-          setData(responseData.message);
           if (
             responseData.errorType.includes("Columns are undefined or empty")
           ) {
@@ -120,43 +124,6 @@ const FileUpload = () => {
     }
   };
 
-  const handleSearchData = async () => {
-    try {
-      let url = `http://localhost:3001/getDataByCityOrState?city=${city}&state=${state}`;
-      const result = await fetch(url);
-
-      if (!result.ok) {
-        throw new Error(`HTTP error! Status: ${result.status}`);
-      }
-
-      const responseData = await result.json();
-      setData(responseData.data);
-
-      console.log("Data fetched successfully. Current page reset to 1.");
-    } catch (error) {
-      console.error(error);
-      setStatus("fail");
-    }
-  };
-
-  const handlePropertyData = async () => {
-    try {
-      let url = `http://localhost:3001/getDataByPropertyType?mls_propertyType=${propertyType}&mls_propertySubtype=${propertySubType}`;
-      const result = await fetch(url);
-
-      if (!result.ok) {
-        throw new Error(`HTTP error! Status: ${result.status}`);
-      }
-
-      const responseData = await result.json();
-      setData(responseData.data);
-      setStatus("success");
-    } catch (error) {
-      console.error(error);
-      setStatus("fail");
-    }
-  };
-
   const handleGetData = async () => {
     try {
       let soldDate = selectedSoldDate
@@ -168,8 +135,8 @@ const FileUpload = () => {
       let formattedEndDate = selectedSecondEntryDate
         ? selectedSecondEntryDate.toLocaleDateString("en-GB")
         : "";
-        console.log("solddate",soldDate)
-      let url = "http://localhost:3001/getData?";
+      console.log("solddate", soldDate);
+      let url = `http://localhost:3001/getData?page=${currentPage}&pageSize=${perPage}`;
       if (city) {
         url += `&address_city=${city}`;
       }
@@ -220,14 +187,60 @@ const FileUpload = () => {
       setStatus("fail");
     }
   };
+  const handleExport = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch("http://localhost:3001/exportCSV", {
+        method: "GET",
+      });
 
-  const handleSearchButtonClick = () => {
-    setCurrentPage(1);
-    handleGetData();
+      if (!response.ok) {
+        throw new Error(`HTTP error! Status: ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(new Blob([blob]));
+
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", "data.csv");
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode.removeChild(link);
+      setLoading(false);
+    } catch (error) {
+      console.error("Error exporting data:", error.message);
+      setLoading(false);
+    }
   };
+
+  const handleSearchButtonClick = async () => {
+    setCurrentPage(1);
+    setLoading(true); // Set loading state to true
+    await handleGetData();
+    setLoading(false); // Set loading state to false after fetching data
+  };
+
   useEffect(() => {
-      handleGetData();
-  }, [tableData]);
+    const interval = setInterval(async () => {
+      if (jobId) {
+        const result = await fetch(
+          `http://localhost:3001/progress?jobId=${jobId}`,
+          {
+            method: "GET",
+          }
+        );
+
+        const json = await result.json();
+        setProgress(json.progress);
+        if (json.progress === 100) {
+          setJobId(null);
+          clearInterval(interval);
+        }
+      }
+    }, 1000);
+  }, [jobId]);
+
   return (
     <>
       <div className="input-group mt-2 text-center">
@@ -241,6 +254,9 @@ const FileUpload = () => {
             <li className="mb-2">Name: {file.name}</li>
             <li className="mb-2">Type: {file.type}</li>
             <li>Size: {file.size} bytes</li>
+            <li>Total rows: {totalRows}</li>
+            <li>Processed rows: {progress.rowsProcessed}</li>
+            <p style={{ marginTop: "5px" }}>Progress: {progress.progress}%</p>
           </ul>
         </section>
       )}
@@ -260,384 +276,217 @@ const FileUpload = () => {
         </div>
       )}
       <section>
-      <div className="grid grid-cols-5 place-content-start">
-        <div className="m-6">
-          <label className="mb-2 text-gray-700" htmlFor="city">
-            Select Entry Date:
-          </label>
-          <div className="flex items-center">
-            <div className="mr-4">
-              <input
-                type="radio"
-                id="singleDate"
-                name="dateSelectionMode"
-                value="single"
-                checked={dateSelectionMode === "single"}
-                onChange={() => handleDateSelectionModeChange("single")}
-              />
-              <label className="ml-2 text-gray-700" htmlFor="singleDate">
-                Single Date
-              </label>
+        <div className="grid grid-cols-5 place-content-start">
+          <div className="m-6">
+            <label className="mb-2 text-gray-700" htmlFor="city">
+              Select Entry Date:
+            </label>
+            <div className="flex items-center">
+              <div className="mr-4">
+                <input
+                  type="radio"
+                  id="singleDate"
+                  name="dateSelectionMode"
+                  value="single"
+                  checked={dateSelectionMode === "single"}
+                  onChange={() => handleDateSelectionModeChange("single")}
+                />
+                <label className="ml-2 text-gray-700" htmlFor="singleDate">
+                  Single Date
+                </label>
+              </div>
+              <div>
+                <input
+                  type="radio"
+                  id="dateRange"
+                  name="dateSelectionMode"
+                  value="range"
+                  checked={dateSelectionMode === "range"}
+                  onChange={() => handleDateSelectionModeChange("range")}
+                />
+                <label className="ml-2 text-gray-700" htmlFor="dateRange">
+                  Date Range
+                </label>
+              </div>
             </div>
-            <div>
-              <input
-                type="radio"
-                id="dateRange"
-                name="dateSelectionMode"
-                value="range"
-                checked={dateSelectionMode === "range"}
-                onChange={() => handleDateSelectionModeChange("range")}
-              />
-              <label className="ml-2 text-gray-700" htmlFor="dateRange">
-                Date Range
-              </label>
-            </div>
-          </div>
 
-          {dateSelectionMode === "single" ? (
+            {dateSelectionMode === "single" ? (
+              <DatePicker
+                selected={selectedFirstEntryDate}
+                onChange={handleFirstEntryDate}
+                dateFormat="dd/MM/yyyy"
+                isClearable
+                placeholderText="Select a date"
+              />
+            ) : (
+              <div className="grid place-content-start">
+                <div className="mr-4">
+                  <label className="text-gray-700" htmlFor="startDate">
+                    Start Date:
+                  </label>
+                  <DatePicker
+                    id="startDate"
+                    selected={selectedFirstEntryDate}
+                    onChange={handleFirstEntryDate}
+                    selectsStart
+                    startDate={selectedFirstEntryDate}
+                    dateFormat="dd/MM/yyyy"
+                    isClearable
+                    placeholderText="Select start date"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-gray-700" htmlFor="endDate">
+                    End Date:
+                  </label>
+                  <DatePicker
+                    id="endDate"
+                    selected={selectedSecondEntryDate}
+                    onChange={handleSecondEntryDate}
+                    selectsEnd
+                    dateFormat="dd/MM/yyyy"
+                    endDate={selectedSecondEntryDate}
+                    isClearable
+                    placeholderText="Select end date"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="m-8">
+            <label className="mb-2 text-gray-700" htmlFor="city">
+              City:
+            </label>
+            <input
+              type="text"
+              id="city"
+              name="city"
+              value={city}
+              onChange={handleCityChange}
+              className="mb-5 bg-gray-100 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-gray-400 dark:focus:ring-blue-500 dark:focus:border-blue-500"
+            />
+            <label className="mb-2 text-gray-700" htmlFor="state">
+              State:
+            </label>
+            <input
+              type="text"
+              id="state"
+              name="state"
+              value={state}
+              onChange={handleStateChange}
+              className="mb-5 bg-gray-100 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-gray-400 dark:focus:ring-blue-500 dark:focus:border-blue-500"
+            />
+          </div>
+          <div className="m-8">
+            <label className="mb-2 text-gray-700" htmlFor="propertyType">
+              Property Type:
+            </label>
+            <input
+              type="text"
+              id="propertyType"
+              name="propertyType"
+              value={propertyType}
+              onChange={handlePropertyTypeChange}
+              className="mb-5 bg-gray-100 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-gray-400 dark:focus:ring-blue-500 dark:focus:border-blue-500 "
+            />
+            <label className="mb-2 text-gray-700" htmlFor="propertySubType">
+              Property SubType:
+            </label>
+            <input
+              type="text"
+              id="propertySubType"
+              name="propertySubType"
+              value={propertySubType}
+              onChange={handlePropertySubTypeChange}
+              className="mb-5 bg-gray-100 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-gray-400 dark:focus:ring-blue-500 dark:focus:border-blue-500 "
+            />
+          </div>
+          <div className="m-8">
+            <label className="mb-2 text-gray-700" htmlFor="zipAddress">
+              Zip Address:
+            </label>
+            <input
+              type="number"
+              min={0}
+              id="zipAddress"
+              name="zipAddress"
+              value={zipAddress}
+              onChange={handleZipAddressChange}
+              className="mb-5 bg-gray-100 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-gray-400 dark:focus:ring-blue-500 dark:focus:border-blue-500 "
+            />
+            <label className="mb-2 text-gray-700" htmlFor="countyAddress">
+              County Address:
+            </label>
+            <input
+              type="text"
+              id="countyAddress"
+              name="countyAddress"
+              value={countyAddress}
+              onChange={handleCountyAddressChange}
+              className="mb-5 bg-gray-100 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-gray-400 dark:focus:ring-blue-500 dark:focus:border-blue-500 "
+            />
+          </div>
+          <div className="m-8">
+            <label className="mb-2 text-gray-700" htmlFor="city">
+              Select Sold Date:
+            </label>
             <DatePicker
-              selected={selectedFirstEntryDate}
-              onChange={handleFirstEntryDate}
+              selected={selectedSoldDate}
+              onChange={handleSoldDateChange}
               dateFormat="dd/MM/yyyy"
               isClearable
               placeholderText="Select a date"
             />
-          ) : (
-            <div className="grid place-content-start">
-              <div className="mr-4">
-                <label className="text-gray-700" htmlFor="startDate">
-                  Start Date:
-                </label>
-                <DatePicker
-                  id="startDate"
-                  selected={selectedFirstEntryDate}
-                  onChange={handleFirstEntryDate}
-                  selectsStart
-                  startDate={selectedFirstEntryDate}
-                  dateFormat="dd/MM/yyyy"
-                  isClearable
-                  placeholderText="Select start date"
-                />
-              </div>
+            <br />
+            <label className="text-gray-700 mt-16" htmlFor="mlsStatus">
+              MLS Status:
+            </label>
+            <input
+              type="text"
+              id="mlsStatus"
+              name="mlsStatus"
+              value={mlsStatus}
+              onChange={handleMlsStatus}
+              className="mb-5 bg-gray-100 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-gray-400 dark:focus:ring-blue-500 dark:focus:border-blue-500 "
+            />
+          </div>
+          <button
+            disabled={loading}
+            onClick={handleSearchButtonClick}
+            className="ml-96 search-btn text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mb-2 dark:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none dark:focus:ring-blue-800 mt-2 w-full"
+          >
+            Search
+          </button>
+          <button
+            disabled={loading}
+            onClick={handleExport}
+            className="ml-96 search-btn text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mb-2 dark:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none dark:focus:ring-blue-800 mt-2 w-full"
+          >
+            Export
+          </button>
+        </div>
+      </section>
 
-              <div>
-                <label className="text-gray-700" htmlFor="endDate">
-                  End Date:
-                </label>
-                <DatePicker
-                  id="endDate"
-                  selected={selectedSecondEntryDate}
-                  onChange={handleSecondEntryDate}
-                  selectsEnd
-                  dateFormat="dd/MM/yyyy"
-                  endDate={selectedSecondEntryDate}
-                  isClearable
-                  placeholderText="Select end date"
-                />
-              </div>
-            </div>
-          )}
-        </div>
-        <div className="m-8">
-          <label className="mb-2 text-gray-700" htmlFor="city">
-            City:
-          </label>
-          <input
-            type="text"
-            id="city"
-            name="city"
-            value={city}
-            onChange={handleCityChange}
-            className="mb-5 bg-gray-100 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-gray-400 dark:focus:ring-blue-500 dark:focus:border-blue-500"
+      {loading ? (
+         <div className="spinner-container">
+         <div className="spinner"></div>
+       </div>
+      ) : (
+        data && (
+          <Table
+            data={data}
+            perPage={perPage}
+            currentPage={currentPage}
+            setCurrentPage={setCurrentPage}
           />
-          <label className="mb-2 text-gray-700" htmlFor="state">
-            State:
-          </label>
-          <input
-            type="text"
-            id="state"
-            name="state"
-            value={state}
-            onChange={handleStateChange}
-            className="mb-5 bg-gray-100 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-gray-400 dark:focus:ring-blue-500 dark:focus:border-blue-500"
-          />
-        </div>
-        <div className="m-8">
-          <label className="mb-2 text-gray-700" htmlFor="propertyType">
-            Property Type:
-          </label>
-          <input
-            type="text"
-            id="propertyType"
-            name="propertyType"
-            value={propertyType}
-            onChange={handlePropertyTypeChange}
-            className="mb-5 bg-gray-100 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-gray-400 dark:focus:ring-blue-500 dark:focus:border-blue-500 "
-          />
-          <label className="mb-2 text-gray-700" htmlFor="propertySubType">
-            Property SubType:
-          </label>
-          <input
-            type="text"
-            id="propertySubType"
-            name="propertySubType"
-            value={propertySubType}
-            onChange={handlePropertySubTypeChange}
-            className="mb-5 bg-gray-100 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-gray-400 dark:focus:ring-blue-500 dark:focus:border-blue-500 "
-          />
-        </div>
-        <div className="m-8">
-          <label className="mb-2 text-gray-700" htmlFor="zipAddress">
-            Zip Address:
-          </label>
-          <input
-            type="number"
-            min={0}
-            id="zipAddress"
-            name="zipAddress"
-            value={zipAddress}
-            onChange={handleZipAddressChange}
-            className="mb-5 bg-gray-100 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-gray-400 dark:focus:ring-blue-500 dark:focus:border-blue-500 "
-          />
-          <label className="mb-2 text-gray-700" htmlFor="countyAddress">
-            County Address:
-          </label>
-          <input
-            type="text"
-            id="countyAddress"
-            name="countyAddress"
-            value={countyAddress}
-            onChange={handleCountyAddressChange}
-            className="mb-5 bg-gray-100 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-gray-400 dark:focus:ring-blue-500 dark:focus:border-blue-500 "
-          />
-        </div>
-        <div className="m-8">
-          <label className="mb-2 text-gray-700" htmlFor="city">
-            Select Sold Date:
-          </label>
-          <DatePicker
-            selected={selectedSoldDate}
-            onChange={handleSoldDateChange}
-            dateFormat="dd/MM/yyyy"
-            isClearable
-            placeholderText="Select a date"
-          />
-          <br />
-          <label className="text-gray-700 mt-16" htmlFor="mlsStatus">
-            MLS Status:
-          </label>
-          <input
-            type="text"
-            id="mlsStatus"
-            name="mlsStatus"
-            value={mlsStatus}
-            onChange={handleMlsStatus}
-            className="mb-5 bg-gray-100 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-gray-400 dark:focus:ring-blue-500 dark:focus:border-blue-500 "
-          />
-        </div>
-        <button
-          onClick={handleSearchButtonClick}
-          className="ml-96 search-btn text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mb-2 dark:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none dark:focus:ring-blue-800 mt-2 w-full"
-        >
-          Search
-        </button>
-      </div></section>
-      {data && (
-        <Table
-          data={data}
-          perPage={perPage}
-          currentPage={currentPage}
-          setCurrentPage={setCurrentPage}
-          city={city}
-          state={state}
-          propertyType={propertyType}
-          propertySubType={propertySubType}
-          handleGetData={handleGetData}
-          handleSearchData={handleSearchData}
-          handlePropertyData={handlePropertyData}
-        />
+        )
       )}
     </>
   );
 };
 
-const Table = ({
-  data,
-  perPage,
-  currentPage,
-  setCurrentPage,
-  city,
-  state,
-  propertyType,
-  propertySubType,
-  handleSearchData,
-  handlePropertyData,
-  handleGetData,
-}) => {
-  let columns = [];
-
-  if (Array.isArray(data) && data.length > 0) {
-    columns = Object.keys(data[0]);
-  }
-
-  console.log("Data received:", data);
-  console.log("column", columns);
-
-  const isDateColumn = (columnName) => {
-    const dateColumns = [
-      "entryDate",
-      "mls_failedListingDate",
-      "mls_maxListPriceDate",
-      "mls_minListPriceDate",
-      "mls_originalListingDate",
-      "mls_soldDate",
-    ];
-    return dateColumns.includes(columnName);
-  };
-
-  const formatDate = (value, columnName) => {
-    return isDateColumn(columnName) && value
-      ? new Date(value).toLocaleDateString()
-      : value;
-  };
-
-  const startIndex = (currentPage - 1) * perPage;
-  const endIndex = startIndex + perPage;
-
-  let paginatedData = [];
-  let totalItems = 0;
-
-  if (Array.isArray(data) && data.length > 0) {
-    paginatedData = data.slice(startIndex, endIndex);
-    totalItems = data.length;
-  }
-
-  if (data.length === 0) {
-    return (
-      <div className="mt-4 text-center">
-        <p className="text-red-500">No data found</p>
-      </div>
-    );
-  }
-
-  const handlePaginationChange = (pageNumber) => {
-    setCurrentPage(pageNumber);
-
-    if (city || state) {
-      handleSearchData();
-    } else if (propertyType || propertySubType) {
-      handlePropertyData();
-    } else {
-      handleGetData();
-    }
-  };
-
-  return (
-    <div>
-      <div className="max-h-96 overflow-x-auto mt-4">
-        <table className="w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400">
-          <thead className="text-xs text-gray-700 uppercase bg-gray-100 dark:bg-gray-700 dark:text-gray-400 sticky top-0">
-            <tr>
-              {columns.map((column, index) => (
-                <th
-                  key={index}
-                  scope="col"
-                  className={`px-6 py-3 ${
-                    index === 0
-                      ? "rounded-s-lg"
-                      : index === columns.length - 1
-                      ? "rounded-e-lg"
-                      : ""
-                  }`}
-                >
-                  {column}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {paginatedData.map((row, rowIndex) => (
-              <tr key={rowIndex} className="bg-white dark:bg-gray-800">
-                {columns.map((column, columnIndex) => (
-                  <td
-                    key={columnIndex}
-                    className="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white"
-                  >
-                    {formatDate(row[column], column)}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      <Pagination
-        totalItems={totalItems}
-        itemsPerPage={perPage}
-        currentPage={currentPage}
-        onPageChange={handlePaginationChange}
-      />
-    </div>
-  );
-};
-
 // ... (rest of the code)
-
-const Pagination = ({
-  totalItems,
-  itemsPerPage,
-  currentPage,
-  onPageChange,
-}) => {
-  const totalPages = Math.ceil(totalItems / itemsPerPage);
-  const pageNumbers = Array.from(
-    { length: totalPages },
-    (_, index) => index + 1
-  );
-
-  if (totalItems === 0) {
-    return null;
-  }
-
-  return (
-    <div className="mt-4">
-      <p className="text-gray-700 text-center mt-2">
-        Page {currentPage} of {totalPages}
-      </p>
-      <div className="mt-4 flex justify-center">
-        <button
-          onClick={() => onPageChange(currentPage - 1)}
-          disabled={currentPage === 1}
-          className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mr-2"
-        >
-          Previous
-        </button>
-
-        {pageNumbers.map((pageNumber) => (
-          <button
-            key={pageNumber}
-            onClick={() => onPageChange(pageNumber)}
-            className={`ml-2 ${
-              currentPage === pageNumber
-                ? "bg-blue-700 text-white"
-                : "bg-blue-500 hover:bg-blue-700 text-white hover:text-white"
-            } font-bold py-2 px-4 rounded`}
-          >
-            {pageNumber}
-          </button>
-        ))}
-        <button
-          onClick={() => onPageChange(currentPage + 1)}
-          disabled={currentPage === totalPages}
-          className="ml-2 bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
-        >
-          Next
-        </button>
-      </div>
-    </div>
-  );
-};
 
 const Result = ({ status, data }) => {
   if (status === "success") {
