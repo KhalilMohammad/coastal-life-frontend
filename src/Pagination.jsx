@@ -8,20 +8,25 @@ const Pagination = ({
     return null;
   }
 
-  const generatePageNumbers = () => {
-    const pageNumbers = [];
-    for (let i = currentPage - 2; i <= currentPage + 2; i++) {
-      if (i > 0 && i <= totalItems) {
-        pageNumbers.push(i);
-      }
-    }
-    return pageNumbers;
-  };
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
+
+  // Calculate the range of items to display
+  const startIndex = Math.max(1, currentPage - 2);
+  const endIndex = Math.min(currentPage + 2, totalPages);
+
+  // Generate an array of page numbers to display
+  const pages = [];
+  for (let i = startIndex; i <= endIndex; i++) {
+    pages.push(i);
+  }
 
   return (
     <div className="mt-4">
       <p className="text-gray-700 text-center mt-2">
-        Page {currentPage} of {totalItems}
+        Page {currentPage} of {totalPages}
+      </p>
+      <p className="text-gray-700 text-center mt-2">
+        Total {totalItems}
       </p>
       <div className="mt-4 flex justify-center">
         <button
@@ -32,7 +37,7 @@ const Pagination = ({
           Previous
         </button>
 
-        {generatePageNumbers().map((pageNumber) => (
+        {pages.map((pageNumber) => (
           <button
             key={pageNumber}
             onClick={() => onPageChange(pageNumber)}
