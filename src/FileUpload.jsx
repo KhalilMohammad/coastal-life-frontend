@@ -256,6 +256,8 @@ const FileUpload = () => {
         clearInterval(interval);
       }
     }, 1000);
+
+    return () => clearInterval(interval);
   }, [jobId, handleGetData]);
 
   useEffect(() => {
@@ -279,10 +281,17 @@ const FileUpload = () => {
             <li>Size: {file.size} bytes</li>
             <li>Total rows: {totalRows}</li>
             <li>Processed rows: {progress.rowsProcessed}</li>
-            <p style={{ marginTop: "5px" }}>
+            <h2 style={{ marginTop: "5px" }}>
               Progress: {progress.progress ? progress.progress.toFixed(2) : 0}%
-            </p>
-            {progress.invalidNames &&
+            </h2>
+            <div className="bg-gray-200 w-full h-4 rounded-md">
+              <div
+                className="bg-blue-500 h-full rounded-md"
+                style={{ width: `${progress.progress ? progress.progress.toFixed(2) : 0}%` }}
+              ></div>
+            </div>
+            {progress &&
+              progress.invalidNames &&
               progress.invalidNames.length &&
               progress.invalidNames.map((column, index) => (
                 <div key={index} className="py-2 text-red-500">
