@@ -246,12 +246,14 @@ const FileUpload = () => {
         );
 
         const json = await result.json();
-        setProgress(json.progress);
+        setProgress(json);
         if (json.progress === 100) {
           setJobId(null);
           clearInterval(interval);
           handleGetData();
         }
+      } else {
+        clearInterval(interval);
       }
     }, 1000);
   }, [jobId, handleGetData]);
@@ -279,7 +281,9 @@ const FileUpload = () => {
             <li>Size: {file.size} bytes</li>
             <li>Total rows: {totalRows}</li>
             <li>Processed rows: {progress.rowsProcessed}</li>
-            <p style={{ marginTop: "5px" }}>Progress: {progress.progress}%</p>
+            <p style={{ marginTop: "5px" }}>
+              Progress: {progress.progress ? progress.progress.toFixed(2) : 0}%
+            </p>
           </ul>
         </section>
       )}
