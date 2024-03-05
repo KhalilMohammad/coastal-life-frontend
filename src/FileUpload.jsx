@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import Table from "./Table";
@@ -125,7 +125,7 @@ const FileUpload = () => {
     }
   };
 
-  const handleGetData = async () => {
+  const handleGetData = useCallback(async () => {
     try {
       let soldDate = selectedSoldDate
         ? selectedSoldDate.toLocaleDateString("en-GB")
@@ -183,12 +183,24 @@ const FileUpload = () => {
       setData(responseData.data);
       setTotalItems(responseData.totalItems);
       setStatus("success");
-      console.log("Data fetched successfully. Current page reset to 1.");
     } catch (error) {
       console.error(error);
       setStatus("fail");
     }
-  };
+  }, [
+    city,
+    countyAddress,
+    currentPage,
+    mlsStatus,
+    propertySubType,
+    propertyType,
+    selectedFirstEntryDate,
+    selectedSecondEntryDate,
+    selectedSoldDate,
+    state,
+    zipAddress,
+  ]);
+
   const handleExport = async () => {
     try {
       setLoading(true);
@@ -238,10 +250,19 @@ const FileUpload = () => {
         if (json.progress === 100) {
           setJobId(null);
           clearInterval(interval);
+          handleGetData();
         }
       }
     }, 1000);
-  }, [jobId]);
+  }, [jobId, handleGetData]);
+
+  useEffect(() => {
+    if (currentPage) {
+      setLoading(true);
+      handleGetData();
+      setLoading(false);
+    }
+  }, [currentPage, handleGetData]);
 
   return (
     <>
@@ -471,9 +492,9 @@ const FileUpload = () => {
       </section>
 
       {loading ? (
-         <div className="spinner-container">
-         <div className="spinner"></div>
-       </div>
+        <div className="spinner-container">
+          <div className="spinner"></div>
+        </div>
       ) : (
         data && (
           <Table

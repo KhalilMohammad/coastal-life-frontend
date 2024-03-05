@@ -28,15 +28,6 @@ const Table = ({ data, perPage, currentPage, setCurrentPage, totalItems }) => {
       : value;
   };
 
-  const startIndex = (currentPage - 1) * perPage;
-  const endIndex = startIndex + perPage;
-
-  let paginatedData = [];
-
-  if (Array.isArray(data) && data.length > 0) {
-    paginatedData = data.slice(startIndex, endIndex);
-  }
-
   if (data.length === 0) {
     return (
       <div className="mt-4 text-center">
@@ -73,7 +64,7 @@ const Table = ({ data, perPage, currentPage, setCurrentPage, totalItems }) => {
             </tr>
           </thead>
           <tbody>
-            {paginatedData.map((row, rowIndex) => (
+            {data.map((row, rowIndex) => (
               <tr key={rowIndex} className="bg-white dark:bg-gray-800">
                 {columns.map((column, columnIndex) => (
                   <td
