@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import Table from "./Table";
@@ -10,6 +10,7 @@ const FileUpload = () => {
   const [file, setFile] = useState(null);
   const [status, setStatus] = useState("initial");
   const [data, setData] = useState([]);
+  const [totalItems, setTotalItems] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [city, setCity] = useState(""); // Add city state variables
   const [state, setState] = useState("");
@@ -180,6 +181,7 @@ const FileUpload = () => {
 
       const responseData = await result.json();
       setData(responseData.data);
+      setTotalItems(responseData.totalItems);
       setStatus("success");
       console.log("Data fetched successfully. Current page reset to 1.");
     } catch (error) {
@@ -479,6 +481,7 @@ const FileUpload = () => {
             perPage={perPage}
             currentPage={currentPage}
             setCurrentPage={setCurrentPage}
+            totalItems={totalItems}
           />
         )
       )}

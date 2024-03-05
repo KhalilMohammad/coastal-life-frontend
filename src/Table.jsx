@@ -1,6 +1,6 @@
 import Pagination from "./Pagination";
 
-const Table = ({ data, perPage, currentPage, setCurrentPage }) => {
+const Table = ({ data, perPage, currentPage, setCurrentPage, totalItems }) => {
   let columns = [];
 
   if (Array.isArray(data) && data.length > 0) {
@@ -32,11 +32,9 @@ const Table = ({ data, perPage, currentPage, setCurrentPage }) => {
   const endIndex = startIndex + perPage;
 
   let paginatedData = [];
-  let totalItems = 0;
 
   if (Array.isArray(data) && data.length > 0) {
     paginatedData = data.slice(startIndex, endIndex);
-    totalItems = data.length;
   }
 
   if (data.length === 0) {
