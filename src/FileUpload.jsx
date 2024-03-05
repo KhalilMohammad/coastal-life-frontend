@@ -259,12 +259,10 @@ const FileUpload = () => {
   }, [jobId, handleGetData]);
 
   useEffect(() => {
-    if (currentPage) {
-      setLoading(true);
-      handleGetData();
-      setLoading(false);
-    }
-  }, [currentPage, handleGetData]);
+    setLoading(true);
+    handleGetData();
+    setLoading(false);
+  }, [handleGetData]);
 
   return (
     <>
@@ -284,6 +282,13 @@ const FileUpload = () => {
             <p style={{ marginTop: "5px" }}>
               Progress: {progress.progress ? progress.progress.toFixed(2) : 0}%
             </p>
+            {progress.invalidNames &&
+              progress.invalidNames.length &&
+              progress.invalidNames.map((column, index) => (
+                <div key={index} className="py-2 text-red-500">
+                  Unknown column '{column}' in field list.
+                </div>
+              ))}
           </ul>
         </section>
       )}
@@ -297,7 +302,6 @@ const FileUpload = () => {
             Upload
           </button>
           <p className="ml-4">
-            {" "}
             <Result status={status} data={data} />
           </p>
         </div>
